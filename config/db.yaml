@@ -1,6 +1,9 @@
 # VM Database Configuration
 # This file configures the VM accounting database
 
+# Terraform working directory (where .tf.json files go and terraform runs)
+terraform_dir: /home/mwaddip/proxmox-terraform
+
 # Database file path (on ix)
 db_file: /var/lib/proxmox-automation/vms.json
 

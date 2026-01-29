@@ -39,6 +39,21 @@ from mint_nft import mint_nft
 PROJECT_DIR = Path(__file__).parent.parent
 
 
+def get_terraform_dir() -> Path:
+    """Get the Terraform working directory from config."""
+    config_path = PROJECT_DIR / "config" / "db.yaml"
+    with open(config_path) as f:
+        config = yaml.safe_load(f)
+    tf_dir = config.get("terraform_dir")
+    if tf_dir:
+        return Path(tf_dir)
+    # Fallback: look for proxmox-testserver symlink
+    symlink = PROJECT_DIR / "proxmox-testserver"
+    if symlink.exists():
+        return symlink.resolve()
+    return PROJECT_DIR
+
+
 def sanitize_resource_name(name: str) -> str:
     """Convert VM name to valid Terraform resource name."""
     return re.sub(r"[^a-zA-Z0-9_]", "_", name)
@@ -178,11 +193,9 @@ def generate_tf_config(
 
 
 def write_tf_file(name: str, config: dict) -> Path:
-    """Write Terraform configuration to a .tf.json file."""
-    vms_dir = PROJECT_DIR / "vms"
-    vms_dir.mkdir(exist_ok=True)
-
-    tf_file = vms_dir / f"{name}.tf.json"
+    """Write Terraform configuration to a .tf.json file in terraform_dir."""
+    tf_dir = get_terraform_dir()
+    tf_file = tf_dir / f"{name}.tf.json"
     with open(tf_file, "w") as f:
         json.dump(config, f, indent=2)
 
@@ -190,15 +203,16 @@ def write_tf_file(name: str, config: dict) -> Path:
 
 
 def run_terraform(action: str = "plan", target: str = None) -> int:
-    """Run terraform command."""
+    """Run terraform command in terraform_dir."""
+    tf_dir = get_terraform_dir()
     cmd = ["terraform", action]
     if target:
         cmd.extend(["-target", target])
     if action == "apply":
         cmd.append("-auto-approve")
 
-    print(f"Running: {' '.join(cmd)}")
-    result = subprocess.run(cmd, cwd=PROJECT_DIR)
+    print(f"Running: {' '.join(cmd)} (in {tf_dir})")
+    result = subprocess.run(cmd, cwd=tf_dir)
     return result.returncode
 
 

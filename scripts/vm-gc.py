@@ -27,10 +27,29 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
+import yaml
+
 # Add scripts directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent))
 
 from vm_db import get_database
+
+PROJECT_DIR = Path(__file__).parent.parent
+
+
+def get_terraform_dir() -> Path:
+    """Get the Terraform working directory from config."""
+    config_path = PROJECT_DIR / "config" / "db.yaml"
+    with open(config_path) as f:
+        config = yaml.safe_load(f)
+    tf_dir = config.get("terraform_dir")
+    if tf_dir:
+        return Path(tf_dir)
+    # Fallback: look for proxmox-testserver symlink
+    symlink = PROJECT_DIR / "proxmox-testserver"
+    if symlink.exists():
+        return symlink.resolve()
+    return PROJECT_DIR
 
 
 def sanitize_resource_name(name: str) -> str:
@@ -40,7 +59,7 @@ def sanitize_resource_name(name: str) -> str:
 
 def get_tf_file_path(name: str) -> Path:
     """Get the path to a VM's Terraform config file."""
-    return Path(__file__).parent.parent / "vms" / f"{name}.tf.json"
+    return get_terraform_dir() / f"{name}.tf.json"
 
 
 def run_terraform_destroy(vm_name: str, dry_run: bool = True) -> bool:
@@ -49,7 +68,7 @@ def run_terraform_destroy(vm_name: str, dry_run: bool = True) -> bool:
 
     Returns True if successful, False otherwise.
     """
-    project_dir = Path(__file__).parent.parent
+    tf_dir = get_terraform_dir()
     resource_name = sanitize_resource_name(vm_name)
     target = f"proxmox_virtual_environment_vm.{resource_name}"
 
@@ -57,12 +76,12 @@ def run_terraform_destroy(vm_name: str, dry_run: bool = True) -> bool:
     if not dry_run:
         cmd.append("-auto-approve")
 
-    print(f"  Running: {' '.join(cmd)}")
+    print(f"  Running: {' '.join(cmd)} (in {tf_dir})")
 
     if dry_run:
         # For dry run, just run terraform plan -destroy
         cmd = ["terraform", "plan", "-destroy", "-target", target]
-        result = subprocess.run(cmd, cwd=project_dir, capture_output=True, text=True)
+        result = subprocess.run(cmd, cwd=tf_dir, capture_output=True, text=True)
         if result.returncode == 0:
             print(f"  [DRY RUN] Would destroy {target}")
             return True
@@ -70,7 +89,7 @@ def run_terraform_destroy(vm_name: str, dry_run: bool = True) -> bool:
             print(f"  Error planning destroy: {result.stderr}")
             return False
     else:
-        result = subprocess.run(cmd, cwd=project_dir)
+        result = subprocess.run(cmd, cwd=tf_dir)
         return result.returncode == 0
 
 

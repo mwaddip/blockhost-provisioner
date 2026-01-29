@@ -43,8 +43,9 @@ echo "Creating working copy for customization..."
 cp "/tmp/${IMAGE_NAME}" "${WORK_IMAGE}"
 
 # Customize the image with libpam-web3
+# Note: sudo required on Ubuntu because /boot/vmlinuz-* is not world-readable
 echo "Installing libpam-web3 into image..."
-virt-customize -a "${WORK_IMAGE}" \
+sudo virt-customize -a "${WORK_IMAGE}" \
     --copy-in "${LIBPAM_WEB3_DEB}":/tmp \
     --run-command 'dpkg -i /tmp/libpam-web3_0.2.0_amd64.deb || apt-get -f install -y' \
     --run-command 'systemctl enable web3-auth-svc' \
