@@ -50,33 +50,63 @@ def read_deployer_key(config: dict) -> str:
     return key_file.read_text().strip()
 
 
-def load_signing_page(config: dict) -> str:
+def load_signing_page(
+    config: dict,
+    user_encrypted: str = "",
+    decrypt_message: str = "",
+) -> str:
     """
     Load and base64-encode the signing page HTML.
 
     The signing page is embedded in the NFT's animationUrlBase64 field
     and extracted by VMs to serve locally for wallet authentication.
 
-    Returns just the base64-encoded content (not a data URI).
+    If user_encrypted and decrypt_message are provided, they are embedded
+    into the signing page so users can decrypt their connection details.
+
+    Args:
+        config: Web3 config dict
+        user_encrypted: Hex-encoded encrypted connection details
+        decrypt_message: Message user signs to derive decryption key
+
+    Returns:
+        Base64-encoded HTML content (not a data URI).
     """
-    html_path = Path(config.get("signing_page", {}).get(
-        "html_path",
-        "/usr/share/libpam-web3/signing-page/index.html"
-    ))
+    # Search paths in order of preference
+    search_paths = [
+        # Config-specified path
+        Path(config.get("signing_page", {}).get("html_path", "")),
+        # libpam-web3-tools package location (new)
+        Path("/usr/share/libpam-web3-tools/signing-page/index.html"),
+        # Legacy libpam-web3 location
+        Path("/usr/share/libpam-web3/signing-page/index.html"),
+        # Local development path (libpam-web3-tools)
+        Path.home() / "projects/libpam-web3/packaging/libpam-web3-tools_0.4.0_amd64/usr/share/libpam-web3-tools/signing-page/index.html",
+        # Local development path (legacy)
+        Path.home() / "projects/libpam-web3/signing-page/index.html",
+    ]
 
-    # Also check local development path
-    if not html_path.exists():
-        dev_path = Path.home() / "projects/libpam-web3/signing-page/index.html"
-        if dev_path.exists():
-            html_path = dev_path
+    html_path = None
+    for path in search_paths:
+        if path and path.exists():
+            html_path = path
+            break
 
-    if not html_path.exists():
+    if not html_path:
         raise FileNotFoundError(
-            f"Signing page HTML not found at {html_path}. "
-            f"Install libpam-web3 or set signing_page.html_path in config."
+            "Signing page HTML not found. Searched:\n" +
+            "\n".join(f"  - {p}" for p in search_paths if p) +
+            "\nInstall libpam-web3-tools or set signing_page.html_path in config."
         )
 
     html_content = html_path.read_text()
+
+    # Embed decrypt credentials if provided
+    if user_encrypted and decrypt_message:
+        print(f"Embedding decrypt credentials into signing page...")
+        html_content = html_content.replace("__DECRYPT_MESSAGE__", decrypt_message)
+        html_content = html_content.replace("__USER_ENCRYPTED__", user_encrypted)
+
     return base64.b64encode(html_content.encode()).decode()
 
 
@@ -108,9 +138,13 @@ def mint_nft(
     nft_contract = config["blockchain"]["nft_contract"]
     rpc_url = config["blockchain"]["rpc_url"]
 
-    # Load signing page HTML as base64
+    # Load signing page HTML as base64, embedding decrypt credentials if provided
     print("Loading signing page...")
-    signing_page_base64 = load_signing_page(config)
+    signing_page_base64 = load_signing_page(
+        config,
+        user_encrypted=user_encrypted if user_encrypted != "0x" else "",
+        decrypt_message=decrypt_message,
+    )
     print(f"Signing page size: {len(signing_page_base64)} bytes (base64)")
 
     # Read deployer key

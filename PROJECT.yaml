@@ -168,8 +168,8 @@ python_api:
           - Deployer private key with funds
           - Signing page HTML (from libpam-web3)
       - name: load_signing_page
-        signature: load_signing_page(config) -> str
-        description: Load signing page HTML and return as base64 (not data URI)
+        signature: load_signing_page(config, user_encrypted="", decrypt_message="") -> str
+        description: Load signing page HTML, embed decrypt credentials if provided, return as base64
 
 # Configuration files
 # Config loading checks /etc/blockhost/ first, then falls back to config/
