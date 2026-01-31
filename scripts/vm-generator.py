@@ -120,6 +120,7 @@ def generate_tf_config(
     vmid: int,
     ip_address: str,
     gateway: str,
+    tf_dir: Path,
     cpu_cores: int = 1,
     memory_mb: int = 512,
     disk_gb: int = 10,
@@ -130,7 +131,12 @@ def generate_tf_config(
     username: str = "admin",
     cloud_init_content: str = None,
 ) -> dict:
-    """Generate Terraform JSON configuration for a VM."""
+    """Generate Terraform JSON configuration for a VM.
+
+    Note: cloud_init_content is written to a separate file in tf_dir rather than
+    embedded in the JSON, because Terraform's JSON parser incorrectly interprets
+    patterns like 'data:application/json' as data source references.
+    """
 
     resource_name = sanitize_resource_name(name)
 
@@ -181,7 +187,11 @@ def generate_tf_config(
     }
 
     # Add cloud-init content as a Proxmox file resource
+    # Write to separate file to avoid Terraform JSON parsing issues with "data:" URIs
     if cloud_init_content:
+        cloud_init_file = tf_dir / f"{name}-cloud-config.yaml"
+        cloud_init_file.write_text(cloud_init_content)
+
         vm_config["initialization"]["user_data_file_id"] = (
             f"${{proxmox_virtual_environment_file.cloud_config_{resource_name}.id}}"
         )
@@ -191,8 +201,8 @@ def generate_tf_config(
                 "content_type": "snippets",
                 "datastore_id": "local",
                 "node_name": node_name,
-                "source_raw": {
-                    "data": cloud_init_content,
+                "source_file": {
+                    "path": str(cloud_init_file),
                     "file_name": f"{name}-cloud-config.yaml"
                 }
             }
@@ -374,11 +384,13 @@ Examples:
             print(f"Warning: Cloud-init template '{template_name}' not found")
 
     # Generate Terraform config
+    tf_dir = get_terraform_dir()
     tf_config = generate_tf_config(
         name=args.name,
         vmid=vmid,
         ip_address=ip_address,
         gateway=gateway,
+        tf_dir=tf_dir,
         cpu_cores=args.cpu,
         memory_mb=args.memory,
         disk_gb=args.disk,
