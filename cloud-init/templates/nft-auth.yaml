@@ -2,7 +2,9 @@
 # NFT Authentication Cloud-Init Template
 # Variables (substituted by vm-generator.py):
 #   ${VM_NAME}         - VM hostname
-#   ${VM_IP}           - Allocated IP address
+#   ${VM_IP}           - Allocated IPv4 address (private)
+#   ${VM_IPV6}         - Allocated IPv6 address (public, may be empty)
+#   ${SIGNING_HOST}    - Host for signing URL ([ipv6] or ipv4)
 #   ${USERNAME}        - Linux username
 #   ${NFT_TOKEN_ID}    - Reserved NFT token ID
 #   ${CHAIN_ID}        - Blockchain chain ID
@@ -31,7 +33,7 @@ write_files:
       [auth]
       mode = "nft"
       nft_lookup = "passwd"
-      signing_url = "http://${VM_IP}:8080"
+      signing_url = "http://${SIGNING_HOST}:8080"
       otp_length = ${OTP_LENGTH}
       otp_ttl_seconds = ${OTP_TTL}
 

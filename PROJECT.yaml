@@ -1,6 +1,6 @@
 # Blockhost Provisioner Project Manifest
 # Machine-readable overview for integration and automation
-# Last updated: 2026-01-31 (renamed to blockhost-provisioner, integrated blockhost-common)
+# Last updated: 2026-02-02 (added IPv6 allocation support)
 
 name: blockhost-provisioner
 version: "0.2.0"
@@ -63,10 +63,15 @@ entry_points:
         description: Disable web3 auth, use standard cloud-init
       - name: --cloud-init
         description: Cloud-init template name (default nft-auth when web3 enabled)
+      - name: --ip
+        description: Specific IPv4 address (otherwise auto-allocated)
+      - name: --ipv6
+        description: Specific IPv6 address (otherwise auto-allocated from broker pool)
     outputs:
       - Generated .tf.json file path
       - Allocated VMID
-      - Allocated IP address
+      - Allocated IPv4 address
+      - Allocated IPv6 address (if broker pool configured)
       - Reserved NFT token ID (if web3 enabled)
     example: |
       python3 scripts/vm-generator.py web-001 \
@@ -158,12 +163,13 @@ external_modules:
   blockhost_common:
     package: blockhost-common
     provides:
-      - blockhost.config: Path constants, config loading (load_db_config, load_web3_config, get_terraform_dir)
-      - blockhost.vm_db: Database classes (VMDatabase, MockVMDatabase, get_database)
+      - blockhost.config: Path constants, config loading (load_db_config, load_web3_config, get_terraform_dir, load_broker_allocation)
+      - blockhost.vm_db: Database classes (VMDatabase, MockVMDatabase, get_database) with allocate_ip and allocate_ipv6
     config_files:
       - /etc/blockhost/db.yaml
       - /etc/blockhost/web3-defaults.yaml
       - /etc/blockhost/blockhost.yaml
+      - /etc/blockhost/broker-allocation.json  # Created by blockhost-broker client, provides IPv6 prefix
 
 # Cloud-init templates
 cloud_init_templates:
@@ -172,7 +178,9 @@ cloud_init_templates:
     description: NFT authentication with web3-auth-svc and signing page
     variables:
       - VM_NAME
-      - VM_IP
+      - VM_IP          # IPv4 address (private)
+      - VM_IPV6        # IPv6 address (public, may be empty if no broker pool)
+      - SIGNING_HOST   # Host for signing URL ([ipv6] or ipv4)
       - USERNAME
       - NFT_TOKEN_ID
       - CHAIN_ID
@@ -205,7 +213,8 @@ cloud_init_templates:
 # External dependencies
 dependencies:
   packages:
-    - blockhost-common: Config and database modules
+    - blockhost-common: Config and database modules (including IPv6 allocation)
+    - blockhost-broker: IPv6 tunnel broker (broker-client creates /etc/blockhost/broker-allocation.json)
     - libpam-web3-tools: Signing page HTML, pam_web3_tool CLI
   system:
     - terraform: ">=1.0"
@@ -244,9 +253,9 @@ workflow:
   vm_creation:
     steps:
       - 1: Reserve NFT token ID (db.reserve_nft_token_id)
-      - 2: Allocate VMID and IP (db.allocate_vmid, db.allocate_ip)
-      - 3: Render cloud-init template with variables
-      - 4: Generate .tf.json config
+      - 2: Allocate VMID, IPv4 and IPv6 (db.allocate_vmid, db.allocate_ip, db.allocate_ipv6)
+      - 3: Render cloud-init template with variables (including SIGNING_HOST for IPv6 or IPv4)
+      - 4: Generate .tf.json config (with dual-stack IPv4/IPv6 if available)
       - 5: Run terraform apply (if --apply)
       - 6: If --user-signature provided, encrypt connection details (pam_web3_tool encrypt-symmetric)
       - 7: Mint NFT to owner wallet (if successful and not --skip-mint)
@@ -254,9 +263,15 @@ workflow:
     on_failure:
       - Mark NFT token as failed (not minted, can't reuse ID)
       - VM not created, resources released
+    ipv6_notes:
+      description: |
+        IPv6 addresses are allocated from the broker pool (/etc/blockhost/broker-allocation.json).
+        If the broker allocation file exists, VMs get both private IPv4 and public IPv6.
+        The NFT encrypted connection details use IPv6 (public) when available.
+        The signing page URL also uses IPv6 for internet accessibility.
     encryption_workflow:
       description: |
         When --user-signature is provided, connection details are encrypted into the NFT.
         The user can later decrypt them by re-signing the same message.
       encryption_method: AES-256-GCM with key = keccak256(user_signature)
-      encrypted_data: '{"hostname": "<IP>", "port": 22, "username": "<user>"}'
+      encrypted_data: '{"hostname": "<IPv6 or IPv4>", "port": 22, "username": "<user>"}'

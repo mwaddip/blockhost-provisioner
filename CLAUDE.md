@@ -1,11 +1,16 @@
 # Claude Instructions for blockhost-provisioner
 
+## Project Scope
+
+**This Claude session only modifies blockhost-provisioner.** Changes to dependency packages (blockhost-common, blockhost-broker, libpam-web3-tools) should be done in their respective Claude sessions with separate prompts.
+
 ## Project Overview
 
 This is the Proxmox VM provisioning component of the Blockhost system, providing NFT-based web3 authentication. Read `PROJECT.yaml` for the complete machine-readable API specification.
 
 **Dependencies:**
 - `blockhost-common` - Provides `blockhost.config` and `blockhost.vm_db` modules
+- `blockhost-broker` - IPv6 tunnel broker (broker-client saves allocation to `/etc/blockhost/broker-allocation.json`)
 - `libpam-web3-tools` - Provides signing page HTML and `pam_web3_tool` CLI
 
 ## Environment Variables

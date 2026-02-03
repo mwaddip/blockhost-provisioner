@@ -93,6 +93,7 @@ def generate_tf_config(
     ssh_keys: list[str] = None,
     username: str = "admin",
     cloud_init_content: str = None,
+    ipv6_address: str = None,
 ) -> dict:
     """Generate Terraform JSON configuration for a VM.
 
@@ -128,7 +129,8 @@ def generate_tf_config(
                 "ipv4": {
                     "address": f"{ip_address}/24",
                     "gateway": gateway
-                }
+                },
+                **({"ipv6": {"address": f"{ipv6_address}/120"}} if ipv6_address else {})
             },
             "user_account": {
                 "username": username,
@@ -241,7 +243,8 @@ Examples:
     parser.add_argument("--node", default="ix", help="Proxmox node name (default: ix)")
     parser.add_argument("--apply", action="store_true", help="Run terraform apply after generating")
     parser.add_argument("--mock", action="store_true", help="Use mock database for testing")
-    parser.add_argument("--ip", help="Specific IP address (otherwise auto-allocated)")
+    parser.add_argument("--ip", help="Specific IPv4 address (otherwise auto-allocated)")
+    parser.add_argument("--ipv6", help="Specific IPv6 address (otherwise auto-allocated from broker pool)")
     parser.add_argument("--vmid", type=int, help="Specific VMID (otherwise auto-allocated)")
 
     # Web3 / NFT options
@@ -285,7 +288,17 @@ Examples:
         if not ip_address:
             print("Error: IP pool exhausted")
             sys.exit(1)
-        print(f"Allocated IP: {ip_address}")
+        print(f"Allocated IPv4: {ip_address}")
+
+    # Allocate IPv6 address (optional - depends on broker allocation)
+    if args.ipv6:
+        ipv6_address = args.ipv6
+    else:
+        ipv6_address = db.allocate_ipv6()
+        if ipv6_address:
+            print(f"Allocated IPv6: {ipv6_address}")
+        else:
+            print("Note: No IPv6 pool configured (broker allocation not found)")
 
     # Load SSH keys
     ssh_keys = load_ssh_keys()
@@ -322,10 +335,19 @@ Examples:
         # Generate random secret key for PAM module (32 bytes = 64 hex chars)
         secret_key = secrets.token_hex(32)
 
+        # Determine signing host: IPv6 (public) preferred, fall back to IPv4 (private)
+        # IPv6 addresses must be wrapped in brackets for URLs
+        if ipv6_address:
+            signing_host = f"[{ipv6_address}]"
+        else:
+            signing_host = ip_address
+
         # Render cloud-init with variables
         variables = {
             "VM_NAME": args.name,
             "VM_IP": ip_address,
+            "VM_IPV6": ipv6_address or "",
+            "SIGNING_HOST": signing_host,
             "USERNAME": args.username,
             "NFT_TOKEN_ID": str(nft_token_id),
             "CHAIN_ID": str(web3_config["blockchain"]["chain_id"]),
@@ -363,6 +385,7 @@ Examples:
         ssh_keys=ssh_keys,
         username=args.username,
         cloud_init_content=cloud_init_content,
+        ipv6_address=ipv6_address,
     )
 
     # Write Terraform file
@@ -406,9 +429,13 @@ Examples:
             sys.exit(1)
 
         print(f"\nVM '{args.name}' created successfully!")
-        print(f"  IP: {ip_address}")
+        print(f"  IPv4: {ip_address}")
+        if ipv6_address:
+            print(f"  IPv6: {ipv6_address}")
         print(f"  VMID: {vmid}")
-        print(f"  SSH: ssh {args.username}@{ip_address}")
+        # Show SSH with IPv6 if available (public), otherwise IPv4 (private)
+        ssh_host = ipv6_address or ip_address
+        print(f"  SSH: ssh {args.username}@{ssh_host}")
 
         # Mint NFT after successful VM creation
         if web3_enabled and nft_token_id is not None and not args.skip_mint:
@@ -422,8 +449,10 @@ Examples:
 
                 if args.user_signature:
                     print("Encrypting connection details...")
+                    # Use IPv6 if available (public), otherwise fall back to IPv4 (private)
+                    nft_hostname = ipv6_address or ip_address
                     connection_details = json.dumps({
-                        "hostname": ip_address,
+                        "hostname": nft_hostname,
                         "port": 22,
                         "username": args.username
                     })

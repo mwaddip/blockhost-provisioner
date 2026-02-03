@@ -44,3 +44,7 @@ Thumbs.db
 
 # Symlink
 proxmox-testserver
+
+# Build output
+build/
+*.deb
