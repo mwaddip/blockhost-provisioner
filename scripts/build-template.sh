@@ -125,12 +125,25 @@ qm create ${TEMPLATE_VMID} --name "${TEMPLATE_NAME}" \
     --net0 virtio,bridge=vmbr0 \
     --ostype l26 --scsihw virtio-scsi-pci
 
-# Import disk
+# Import disk and capture output to get the actual volume ID
+# Output format: "Successfully imported disk as 'unused0:STORAGE:path'"
+# This handles both LVM (local-lvm:vm-9001-disk-0) and directory (local:9001/vm-9001-disk-0.qcow2) storage
 echo "Importing disk..."
-qm importdisk ${TEMPLATE_VMID} /var/lib/vz/template/qcow2/${IMAGE_NAME} ${STORAGE}
+IMPORT_OUTPUT=\$(qm importdisk ${TEMPLATE_VMID} /var/lib/vz/template/qcow2/${IMAGE_NAME} ${STORAGE} 2>&1)
+echo "\$IMPORT_OUTPUT"
 
-# Attach disk and configure boot
-qm set ${TEMPLATE_VMID} --scsi0 ${STORAGE}:vm-${TEMPLATE_VMID}-disk-0
+# Extract the volume ID from the import output
+# Matches: "unused0:local-lvm:vm-9001-disk-0" or "unused0:local:9001/vm-9001-disk-0.qcow2"
+VOLUME_ID=\$(echo "\$IMPORT_OUTPUT" | grep -oP "unused0:\K[^']+")
+
+if [[ -z "\$VOLUME_ID" ]]; then
+    echo "Error: Failed to extract volume ID from import output"
+    exit 1
+fi
+echo "Imported volume: \$VOLUME_ID"
+
+# Attach disk using the actual volume ID (works for both LVM and directory storage)
+qm set ${TEMPLATE_VMID} --scsi0 "\$VOLUME_ID"
 qm set ${TEMPLATE_VMID} --boot order=scsi0
 
 # Add cloud-init drive
