@@ -90,6 +90,8 @@ def load_signing_page(
         html_content = html_content.replace("__DECRYPT_MESSAGE__", decrypt_message)
         html_content = html_content.replace("__USER_ENCRYPTED__", user_encrypted)
 
+    # Return ONLY the base64 content - no data URI prefix
+    # The contract prepends "data:text/html;base64," itself
     return base64.b64encode(html_content.encode()).decode()
 
 

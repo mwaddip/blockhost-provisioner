@@ -348,8 +348,9 @@ Examples:
         args.node = tfvars.get("proxmox_node", "pve")
 
     # Resolve datastore settings: CLI arg > terraform.tfvars > default
+    # Note: tfvars uses "proxmox_storage" for disk storage
     if not args.disk_datastore:
-        args.disk_datastore = tfvars.get("disk_datastore", "local-lvm")
+        args.disk_datastore = tfvars.get("proxmox_storage", tfvars.get("disk_datastore", "local-lvm"))
     if not args.cloudinit_datastore:
         args.cloudinit_datastore = tfvars.get("cloudinit_datastore", "local")
 
