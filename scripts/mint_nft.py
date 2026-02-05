@@ -71,7 +71,7 @@ def load_signing_page(
 
     html_path = None
     for path in search_paths:
-        if path and path.exists():
+        if path and path.is_file():
             html_path = path
             break
 

@@ -1,6 +1,6 @@
 # Blockhost Provisioner Project Manifest
 # Machine-readable overview for integration and automation
-# Last updated: 2026-02-02 (added IPv6 allocation support)
+# Last updated: 2026-02-05 (end-to-end testing fixes)
 
 name: blockhost-provisioner
 version: "0.2.0"
@@ -67,6 +67,12 @@ entry_points:
         description: Specific IPv4 address (otherwise auto-allocated)
       - name: --ipv6
         description: Specific IPv6 address (otherwise auto-allocated from broker pool)
+      - name: --node
+        description: Proxmox node name (default from terraform.tfvars or 'pve')
+      - name: --disk-datastore
+        description: Datastore for VM disk (default from terraform.tfvars or 'local-lvm')
+      - name: --cloudinit-datastore
+        description: Datastore for cloud-init (default from terraform.tfvars or 'local')
     outputs:
       - Generated .tf.json file path
       - Allocated VMID
@@ -219,6 +225,7 @@ external_modules:
       - /etc/blockhost/web3-defaults.yaml
       - /etc/blockhost/blockhost.yaml
       - /etc/blockhost/broker-allocation.json  # Created by blockhost-broker client, provides IPv6 prefix
+      - /var/lib/blockhost/terraform/terraform.tfvars  # Proxmox node, datastore settings
 
 # Cloud-init templates
 cloud_init_templates:
@@ -319,14 +326,15 @@ vm_lifecycle:
 workflow:
   vm_creation:
     steps:
-      - 1: Reserve NFT token ID (db.reserve_nft_token_id)
+      - 1: Get next NFT token ID from contract totalSupply() (fallback to database)
       - 2: Allocate VMID, IPv4 and IPv6 (db.allocate_vmid, db.allocate_ip, db.allocate_ipv6)
-      - 3: Render cloud-init template with variables (including SIGNING_HOST for IPv6 or IPv4)
-      - 4: Generate .tf.json config (with dual-stack IPv4/IPv6 if available)
-      - 5: Run terraform apply (if --apply)
-      - 6: If --user-signature provided, encrypt connection details (pam_web3_tool encrypt-symmetric)
-      - 7: Mint NFT to owner wallet (if successful and not --skip-mint)
-      - 8: Mark NFT as minted in database
+      - 3: Load Proxmox settings from terraform.tfvars (node, datastores)
+      - 4: Render cloud-init template with variables (including SIGNING_HOST for IPv6 or IPv4)
+      - 5: Generate .tf.json config (with dual-stack IPv4/IPv6, datastore_id in initialization)
+      - 6: Run terraform apply (if --apply)
+      - 7: If --user-signature provided, encrypt connection details (pam_web3_tool encrypt-symmetric)
+      - 8: Mint NFT to owner wallet (if successful and not --skip-mint)
+      - 9: Mark NFT as minted in database
     on_failure:
       - Mark NFT token as failed (not minted, can't reuse ID)
       - VM not created, resources released

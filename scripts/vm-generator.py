@@ -34,10 +34,75 @@ from blockhost.config import (
 )
 from blockhost.vm_db import get_database
 
-from mint_nft import mint_nft
+from blockhost.mint_nft import mint_nft
 
 
-PROJECT_DIR = Path(__file__).parent.parent
+def get_next_token_id_from_contract(config: dict) -> int:
+    """
+    Query the NFT contract's totalSupply() to get the next token ID.
+
+    This is more reliable than the local database which can become stale.
+    Returns totalSupply (which will be the next minted token's ID).
+    """
+    nft_contract = config["blockchain"]["nft_contract"]
+    rpc_url = config["blockchain"]["rpc_url"]
+
+    cmd = [
+        "cast", "call",
+        nft_contract,
+        "totalSupply()(uint256)",
+        "--rpc-url", rpc_url,
+    ]
+
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+        if result.returncode != 0:
+            raise RuntimeError(f"cast call failed: {result.stderr}")
+
+        # Parse the output (cast returns the number directly)
+        total_supply = int(result.stdout.strip())
+        return total_supply
+    except FileNotFoundError:
+        raise RuntimeError("Foundry 'cast' not found. Install from https://getfoundry.sh")
+    except subprocess.TimeoutExpired:
+        raise RuntimeError("Contract call timed out")
+
+
+def load_terraform_vars() -> dict:
+    """Load variables from terraform.tfvars in the terraform directory."""
+    tf_dir = get_terraform_dir()
+    tfvars_file = tf_dir / "terraform.tfvars"
+
+    if not tfvars_file.exists():
+        return {}
+
+    variables = {}
+    content = tfvars_file.read_text()
+
+    # Simple HCL parser for key = "value" pairs
+    for line in content.split("\n"):
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if "=" in line:
+            key, _, value = line.partition("=")
+            key = key.strip()
+            value = value.strip().strip('"')
+            variables[key] = value
+
+    return variables
+
+
+def get_cloud_init_template_dirs() -> list[Path]:
+    """Return list of directories to search for cloud-init templates."""
+    return [
+        # Installed package location
+        Path("/usr/share/blockhost/cloud-init/templates"),
+        # Development location (relative to script)
+        Path(__file__).parent.parent / "cloud-init" / "templates",
+        # Current directory fallback
+        Path("cloud-init/templates"),
+    ]
 
 
 def sanitize_resource_name(name: str) -> str:
@@ -66,10 +131,20 @@ def render_cloud_init(template_name: str, variables: dict) -> str:
 
     Uses ${VAR_NAME} syntax for placeholders.
     """
-    template_path = PROJECT_DIR / "cloud-init" / "templates" / f"{template_name}.yaml"
+    template_path = None
+    search_dirs = get_cloud_init_template_dirs()
 
-    if not template_path.exists():
-        raise FileNotFoundError(f"Cloud-init template not found: {template_path}")
+    for template_dir in search_dirs:
+        candidate = template_dir / f"{template_name}.yaml"
+        if candidate.exists():
+            template_path = candidate
+            break
+
+    if not template_path:
+        searched = "\n".join(f"  - {d}" for d in search_dirs)
+        raise FileNotFoundError(
+            f"Cloud-init template '{template_name}.yaml' not found. Searched:\n{searched}"
+        )
 
     content = template_path.read_text()
 
@@ -88,12 +163,14 @@ def generate_tf_config(
     memory_mb: int = 512,
     disk_gb: int = 10,
     template_vmid: int = 9001,
-    node_name: str = "ix",
+    node_name: str = "pve",
     tags: list[str] = None,
     ssh_keys: list[str] = None,
     username: str = "admin",
     cloud_init_content: str = None,
     ipv6_address: str = None,
+    disk_datastore: str = "local-lvm",
+    cloudinit_datastore: str = "local",
 ) -> dict:
     """Generate Terraform JSON configuration for a VM.
 
@@ -117,7 +194,7 @@ def generate_tf_config(
             "dedicated": memory_mb
         },
         "disk": {
-            "datastore_id": "local-lvm",
+            "datastore_id": disk_datastore,
             "size": disk_gb,
             "interface": "scsi0"
         },
@@ -125,6 +202,7 @@ def generate_tf_config(
             "enabled": True
         },
         "initialization": {
+            "datastore_id": cloudinit_datastore,
             "ip_config": {
                 "ipv4": {
                     "address": f"{ip_address}/24",
@@ -240,12 +318,14 @@ Examples:
     parser.add_argument("--tags", nargs="+", default=[], help="Tags for the VM")
     parser.add_argument("--expiry-days", type=int, default=30, help="Days until VM expires (default: 30)")
     parser.add_argument("--username", default="admin", help="Default user account (default: admin)")
-    parser.add_argument("--node", default="ix", help="Proxmox node name (default: ix)")
+    parser.add_argument("--node", help="Proxmox node name (default: from terraform.tfvars or 'pve')")
     parser.add_argument("--apply", action="store_true", help="Run terraform apply after generating")
     parser.add_argument("--mock", action="store_true", help="Use mock database for testing")
     parser.add_argument("--ip", help="Specific IPv4 address (otherwise auto-allocated)")
     parser.add_argument("--ipv6", help="Specific IPv6 address (otherwise auto-allocated from broker pool)")
     parser.add_argument("--vmid", type=int, help="Specific VMID (otherwise auto-allocated)")
+    parser.add_argument("--disk-datastore", help="Datastore for VM disk (default: from tfvars or 'local-lvm')")
+    parser.add_argument("--cloudinit-datastore", help="Datastore for cloud-init (default: from tfvars or 'local')")
 
     # Web3 / NFT options
     parser.add_argument("--owner-wallet", help="Wallet address to receive the access NFT")
@@ -259,6 +339,19 @@ Examples:
                         help="Cloud-init template name (default: nft-auth when web3 enabled)")
 
     args = parser.parse_args()
+
+    # Load terraform.tfvars for defaults
+    tfvars = load_terraform_vars()
+
+    # Resolve node name: CLI arg > terraform.tfvars > default
+    if not args.node:
+        args.node = tfvars.get("proxmox_node", "pve")
+
+    # Resolve datastore settings: CLI arg > terraform.tfvars > default
+    if not args.disk_datastore:
+        args.disk_datastore = tfvars.get("disk_datastore", "local-lvm")
+    if not args.cloudinit_datastore:
+        args.cloudinit_datastore = tfvars.get("cloudinit_datastore", "local")
 
     # Validate: web3 auth requires --owner-wallet
     web3_enabled = not args.no_web3
@@ -309,11 +402,19 @@ Examples:
     db_config = load_db_config()
     gateway = db_config["ip_pool"]["gateway"]
 
-    # Reserve NFT token ID if web3 enabled
+    # Get NFT token ID from contract's totalSupply (more reliable than local database)
     nft_token_id = None
+    web3_config = None
     if web3_enabled:
-        nft_token_id = db.reserve_nft_token_id(args.name)
-        print(f"Reserved NFT token ID: {nft_token_id}")
+        web3_config = load_web3_config()
+        try:
+            nft_token_id = get_next_token_id_from_contract(web3_config)
+            print(f"Next NFT token ID (from contract): {nft_token_id}")
+        except Exception as e:
+            print(f"Warning: Could not query contract totalSupply: {e}")
+            print("Falling back to database reservation...")
+            nft_token_id = db.reserve_nft_token_id(args.name)
+            print(f"Reserved NFT token ID (from database): {nft_token_id}")
 
     # Build cloud-init content
     cloud_init_content = None
@@ -324,8 +425,7 @@ Examples:
         if not template_name:
             template_name = "nft-auth"
 
-        # Load web3 defaults for template variables
-        web3_config = load_web3_config()
+        # web3_config was already loaded above for token ID query
 
         # Format SSH keys for cloud-init
         ssh_keys_yaml = ""
@@ -362,8 +462,13 @@ Examples:
         cloud_init_content = render_cloud_init(template_name, variables)
     elif template_name:
         # Non-web3 cloud-init template (e.g., webserver, devbox)
-        template_path = PROJECT_DIR / "cloud-init" / "templates" / f"{template_name}.yaml"
-        if template_path.exists():
+        template_path = None
+        for template_dir in get_cloud_init_template_dirs():
+            candidate = template_dir / f"{template_name}.yaml"
+            if candidate.exists():
+                template_path = candidate
+                break
+        if template_path:
             cloud_init_content = template_path.read_text()
         else:
             print(f"Warning: Cloud-init template '{template_name}' not found")
@@ -386,6 +491,8 @@ Examples:
         username=args.username,
         cloud_init_content=cloud_init_content,
         ipv6_address=ipv6_address,
+        disk_datastore=args.disk_datastore,
+        cloudinit_datastore=args.cloudinit_datastore,
     )
 
     # Write Terraform file
@@ -441,7 +548,7 @@ Examples:
         if web3_enabled and nft_token_id is not None and not args.skip_mint:
             print(f"\nMinting NFT #{nft_token_id} to {args.owner_wallet}...")
             try:
-                web3_config = load_web3_config()
+                # web3_config was already loaded earlier
 
                 # Encrypt connection details if user signature provided
                 user_encrypted = "0x"

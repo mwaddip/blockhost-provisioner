@@ -14,6 +14,12 @@
 #   ${OTP_TTL}         - OTP time-to-live in seconds
 #   ${SECRET_KEY}      - Random 64-char hex string for PAM module
 
+hostname: ${VM_NAME}
+
+packages:
+  - qemu-guest-agent
+  - certbot
+
 users:
   - name: ${USERNAME}
     gecos: "nft=${NFT_TOKEN_ID}"
@@ -305,10 +311,123 @@ write_files:
       WantedBy=multi-user.target
 
 runcmd:
+  # Enable qemu-guest-agent for Proxmox/Terraform
+  - systemctl enable --now qemu-guest-agent
+
   # Start services
   - systemctl daemon-reload
   - systemctl enable --now web3-auth-svc
   - systemctl enable --now web3-sign
   - systemctl restart sshd
+
+  # Setup HTTPS with sslip.io (runs async to not block boot)
+  - |
+    cat > /usr/local/bin/setup-https.sh << 'SCRIPT'
+    #!/bin/bash
+    # Auto-setup HTTPS with Let's Encrypt using sslip.io
+    set -e
+
+    VM_NAME="${VM_NAME}"
+    VM_IPV6="${VM_IPV6}"
+
+    # Skip if no IPv6 configured
+    if [ -z "$VM_IPV6" ]; then
+        echo "No IPv6 configured, skipping HTTPS setup"
+        exit 0
+    fi
+
+    # Convert IPv6 to dashed format for sslip.io
+    # e.g., 2a11:6c7:f04:276::2 -> 2a11-6c7-f04-276--2.sslip.io
+    IPV6_DASHED=$(echo "$VM_IPV6" | sed 's/:/-/g')
+    DOMAIN="${VM_NAME}.${IPV6_DASHED}.sslip.io"
+
+    echo "Setting up HTTPS for $DOMAIN..."
+
+    # Stop signing page temporarily for certbot
+    systemctl stop web3-sign || true
+
+    # Get certificate (standalone mode on port 8080)
+    certbot certonly --standalone --non-interactive --agree-tos \
+        --email "admin@localhost" \
+        --domains "$DOMAIN" \
+        --http-01-port 8080 || {
+        echo "Certbot failed, continuing with HTTP"
+        systemctl start web3-sign
+        exit 0
+    }
+
+    # Update pam_web3 config with HTTPS URL
+    sed -i "s|signing_url = \"http://.*\"|signing_url = \"https://${DOMAIN}\"|" /etc/pam_web3/config.toml
+
+    # Create HTTPS server wrapper
+    cat > /usr/local/bin/serve-signing-page-https.py << 'HTTPS_SCRIPT'
+    #!/usr/bin/env python3
+    """HTTPS wrapper for signing page server."""
+    import http.server
+    import ssl
+    import sys
+    import os
+
+    # Import the original server
+    sys.path.insert(0, '/usr/local/bin')
+    from importlib.machinery import SourceFileLoader
+    original = SourceFileLoader('serve_signing_page', '/usr/local/bin/serve-signing-page.py').load_module()
+
+    def main():
+        import argparse
+        parser = argparse.ArgumentParser(description="Serve NFT signing page over HTTPS")
+        parser.add_argument("--contract", required=True)
+        parser.add_argument("--rpc-url", required=True)
+        parser.add_argument("--token-id", required=True, type=int)
+        parser.add_argument("--port", type=int, default=443)
+        parser.add_argument("--cert", required=True)
+        parser.add_argument("--key", required=True)
+        args = parser.parse_args()
+
+        html_content = original.get_signing_page(args.rpc_url, args.contract, args.token_id)
+        original.SigningPageHandler.html_content = html_content
+
+        context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        context.load_cert_chain(args.cert, args.key)
+
+        import socketserver
+        with socketserver.TCPServer(("", args.port), original.SigningPageHandler) as httpd:
+            httpd.socket = context.wrap_socket(httpd.socket, server_side=True)
+            print(f"Serving signing page on https://0.0.0.0:{args.port}")
+            httpd.serve_forever()
+
+    if __name__ == "__main__":
+        main()
+    HTTPS_SCRIPT
+    chmod +x /usr/local/bin/serve-signing-page-https.py
+
+    # Update systemd service for HTTPS
+    CERT_PATH="/etc/letsencrypt/live/${DOMAIN}"
+    cat > /etc/systemd/system/web3-sign.service << EOF
+    [Unit]
+    Description=Web3 Signing Page HTTPS Server
+    After=network.target
+
+    [Service]
+    Type=simple
+    ExecStartPre=/usr/local/bin/wait-for-nft.sh
+    ExecStart=/usr/bin/python3 /usr/local/bin/serve-signing-page-https.py --contract ${NFT_CONTRACT} --rpc-url ${RPC_URL} --token-id ${NFT_TOKEN_ID} --port 443 --cert ${CERT_PATH}/fullchain.pem --key ${CERT_PATH}/privkey.pem
+    Restart=on-failure
+    RestartSec=30
+    AmbientCapabilities=CAP_NET_BIND_SERVICE
+
+    [Install]
+    WantedBy=multi-user.target
+    EOF
+
+    systemctl daemon-reload
+    systemctl start web3-sign
+
+    echo "HTTPS configured at https://${DOMAIN}"
+    SCRIPT
+    chmod +x /usr/local/bin/setup-https.sh
+
+  # Run HTTPS setup in background (don't block boot)
+  - nohup /usr/local/bin/setup-https.sh > /var/log/setup-https.log 2>&1 &
 
 final_message: "Web3 NFT authentication configured after $UPTIME seconds"
