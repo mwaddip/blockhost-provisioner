@@ -411,6 +411,10 @@ Examples:
         try:
             nft_token_id = get_next_token_id_from_contract(web3_config)
             print(f"Next NFT token ID (from contract): {nft_token_id}")
+            # Reserve in database so mark_nft_minted() can find it later
+            # Note: requires blockhost-common with token_id parameter support
+            db.reserve_nft_token_id(args.name, token_id=nft_token_id)
+            print(f"Reserved token {nft_token_id} in database")
         except Exception as e:
             print(f"Warning: Could not query contract totalSupply: {e}")
             print("Falling back to database reservation...")
