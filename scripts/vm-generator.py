@@ -520,8 +520,11 @@ Examples:
         if run_terraform("init") != 0:
             print("Error: terraform init failed")
             if nft_token_id is not None:
-                db.mark_nft_failed(nft_token_id)
-                print(f"NFT token {nft_token_id} marked as failed")
+                try:
+                    db.mark_nft_failed(nft_token_id)
+                    print(f"NFT token {nft_token_id} marked as failed")
+                except ValueError:
+                    pass  # Token wasn't reserved in database, nothing to mark
             sys.exit(1)
 
         print("\nApplying Terraform configuration...")
@@ -532,8 +535,11 @@ Examples:
         if apply_result != 0:
             print(f"\nError: terraform apply failed")
             if nft_token_id is not None:
-                db.mark_nft_failed(nft_token_id)
-                print(f"NFT token {nft_token_id} marked as failed (VM not created)")
+                try:
+                    db.mark_nft_failed(nft_token_id)
+                    print(f"NFT token {nft_token_id} marked as failed (VM not created)")
+                except ValueError:
+                    pass  # Token wasn't reserved in database, nothing to mark
             sys.exit(1)
 
         print(f"\nVM '{args.name}' created successfully!")
