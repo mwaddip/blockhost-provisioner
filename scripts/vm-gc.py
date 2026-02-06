@@ -292,12 +292,23 @@ def phase_destroy(db, grace_days: int, execute: bool, verbose: bool) -> tuple[in
                     try:
                         db.mark_destroyed(vm_name)
                         print(f"    Successfully destroyed")
+                        # Remove IPv6 host route if VM had an IPv6 address
+                        if vm.get("ipv6_address"):
+                            route_result = subprocess.run(
+                                ["ip", "-6", "route", "del", f"{vm['ipv6_address']}/128", "dev", "vmbr0"],
+                                capture_output=True, text=True
+                            )
+                            if route_result.returncode == 0:
+                                print(f"    Removed IPv6 host route: {vm['ipv6_address']}/128")
+                            # Silently ignore if route doesn't exist
                         success_count += 1
                     except Exception as e:
                         print(f"    Error updating database: {e}")
                         error_count += 1
                 else:
                     print(f"    [DRY RUN] Would destroy")
+                    if vm.get("ipv6_address"):
+                        print(f"    [DRY RUN] Would remove IPv6 host route: {vm['ipv6_address']}/128")
                     success_count += 1
             else:
                 error_count += 1

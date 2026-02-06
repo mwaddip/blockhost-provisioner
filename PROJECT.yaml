@@ -344,6 +344,13 @@ workflow:
         If the broker allocation file exists, VMs get both private IPv4 and public IPv6.
         The NFT encrypted connection details use IPv6 (public) when available.
         The signing page URL also uses IPv6 for internet accessibility.
+      gateway: |
+        IPv6 gateway is computed as the first host address in the /120 prefix (offset +1).
+        This is where the Proxmox host has its address on vmbr0.
+      routing: |
+        After VM creation, a /128 host route is added to direct inbound traffic via vmbr0:
+          ip -6 route replace <ipv6>/128 dev vmbr0
+        This route is removed when the VM is destroyed via vm-gc.py.
     encryption_workflow:
       description: |
         When --user-signature is provided, connection details are encrypted into the NFT.

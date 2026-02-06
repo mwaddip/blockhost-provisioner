@@ -169,6 +169,7 @@ def generate_tf_config(
     username: str = "admin",
     cloud_init_content: str = None,
     ipv6_address: str = None,
+    ipv6_gateway: str = None,
     disk_datastore: str = "local",
     cloudinit_datastore: str = "local",
 ) -> dict:
@@ -208,7 +209,7 @@ def generate_tf_config(
                     "address": f"{ip_address}/24",
                     "gateway": gateway
                 },
-                **({"ipv6": {"address": f"{ipv6_address}/120"}} if ipv6_address else {})
+                **({"ipv6": {"address": f"{ipv6_address}/120", **({"gateway": ipv6_gateway} if ipv6_gateway else {})}} if ipv6_address else {})
             },
             "user_account": {
                 "username": username,
@@ -394,6 +395,18 @@ Examples:
         else:
             print("Note: No IPv6 pool configured (broker allocation not found)")
 
+    # Compute IPv6 gateway from prefix (first host address in the /120)
+    ipv6_gateway = None
+    if ipv6_address:
+        import ipaddress
+        from blockhost.config import load_broker_allocation
+        broker = load_broker_allocation()
+        if broker and broker.get("prefix"):
+            network = ipaddress.IPv6Network(broker["prefix"], strict=False)
+            # Gateway is first host address in the prefix (Proxmox host's vmbr0 address)
+            ipv6_gateway = str(network.network_address + 1)
+            print(f"IPv6 gateway: {ipv6_gateway}")
+
     # Load SSH keys
     ssh_keys = load_ssh_keys()
     if not ssh_keys:
@@ -496,6 +509,7 @@ Examples:
         username=args.username,
         cloud_init_content=cloud_init_content,
         ipv6_address=ipv6_address,
+        ipv6_gateway=ipv6_gateway,
         disk_datastore=args.disk_datastore,
         cloudinit_datastore=args.cloudinit_datastore,
     )
@@ -509,6 +523,7 @@ Examples:
         name=args.name,
         vmid=vmid,
         ip=ip_address,
+        ipv6=ipv6_address,
         owner=args.owner,
         expiry_days=args.expiry_days,
         purpose=args.purpose,
@@ -554,6 +569,17 @@ Examples:
         # Show SSH with IPv6 if available (public), otherwise IPv4 (private)
         ssh_host = ipv6_address or ip_address
         print(f"  SSH: ssh {args.username}@{ssh_host}")
+
+        # Add IPv6 host route so inbound traffic from wg-broker reaches the VM via vmbr0
+        if ipv6_address:
+            route_result = subprocess.run(
+                ["ip", "-6", "route", "replace", f"{ipv6_address}/128", "dev", "vmbr0"],
+                capture_output=True, text=True
+            )
+            if route_result.returncode == 0:
+                print(f"  IPv6 host route: {ipv6_address}/128 via vmbr0")
+            else:
+                print(f"  Warning: Failed to add IPv6 host route: {route_result.stderr.strip()}")
 
         # Mint NFT after successful VM creation
         if web3_enabled and nft_token_id is not None and not args.skip_mint:
