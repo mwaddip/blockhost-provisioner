@@ -169,7 +169,7 @@ def generate_tf_config(
     username: str = "admin",
     cloud_init_content: str = None,
     ipv6_address: str = None,
-    disk_datastore: str = "local-lvm",
+    disk_datastore: str = "local",
     cloudinit_datastore: str = "local",
 ) -> dict:
     """Generate Terraform JSON configuration for a VM.
@@ -350,7 +350,7 @@ Examples:
     # Resolve datastore settings: CLI arg > terraform.tfvars > default
     # Note: tfvars uses "proxmox_storage" for disk storage
     if not args.disk_datastore:
-        args.disk_datastore = tfvars.get("proxmox_storage", tfvars.get("disk_datastore", "local-lvm"))
+        args.disk_datastore = tfvars.get("proxmox_storage", tfvars.get("disk_datastore", "local"))
     if not args.cloudinit_datastore:
         args.cloudinit_datastore = tfvars.get("cloudinit_datastore", "local")
 
