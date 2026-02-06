@@ -286,8 +286,19 @@ write_files:
 
           SigningPageHandler.html_content = html_content
 
-          with socketserver.TCPServer(("", args.port), SigningPageHandler) as httpd:
-              print(f"Serving signing page on http://0.0.0.0:{args.port}")
+          # Use dual-stack socket for IPv4 and IPv6 support
+          import socket
+          class DualStackTCPServer(socketserver.TCPServer):
+              address_family = socket.AF_INET6
+              allow_reuse_address = True
+
+              def server_bind(self):
+                  # Enable dual-stack (IPv4 and IPv6 on same socket)
+                  self.socket.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 0)
+                  super().server_bind()
+
+          with DualStackTCPServer(("::", args.port), SigningPageHandler) as httpd:
+              print(f"Serving signing page on http://[::]:{args.port} (IPv4 and IPv6)")
               httpd.serve_forever()
 
 
