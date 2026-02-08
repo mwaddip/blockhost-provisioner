@@ -27,7 +27,7 @@ from blockhost.root_agent import RootAgentError, qm_start
 from blockhost.vm_db import get_database
 
 
-def start_vm(vmid: int, timeout: int = 60) -> tuple[bool, str]:
+def start_vm(vmid: int) -> tuple[bool, str]:
     """Start a VM via root agent."""
     try:
         qm_start(vmid)
@@ -105,6 +105,9 @@ Examples:
     # Determine new expiry
     db_config = load_db_config()
     extend_days = args.extend_days if args.extend_days is not None else db_config.get("default_expiry_days", 30)
+    if extend_days < 1:
+        print("Error: --extend-days must be at least 1")
+        return 1
     new_expiry = datetime.now(timezone.utc) + timedelta(days=extend_days)
 
     print(f"  New expiry: {new_expiry.isoformat()} (+{extend_days} days)")

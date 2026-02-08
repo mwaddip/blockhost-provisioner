@@ -19,6 +19,7 @@ Usage:
 """
 
 import argparse
+import ipaddress
 import json
 import re
 import secrets
@@ -29,13 +30,13 @@ from string import Template
 
 from blockhost.config import (
     get_terraform_dir,
+    load_broker_allocation,
     load_db_config,
     load_web3_config,
 )
+from blockhost.mint_nft import mint_nft
 from blockhost.root_agent import RootAgentError, ip6_route_add
 from blockhost.vm_db import get_database
-
-from blockhost.mint_nft import mint_nft
 
 
 def get_next_token_id_from_contract(config: dict) -> int:
@@ -156,7 +157,6 @@ def render_cloud_init(template_name: str, variables: dict) -> str:
 
 def generate_tf_config(
     name: str,
-    vmid: int,
     ip_address: str,
     gateway: str,
     tf_dir: Path,
@@ -280,6 +280,15 @@ def run_terraform(action: str = "plan", target: str = None) -> int:
     return result.returncode
 
 
+def mark_nft_failed_safe(db, nft_token_id: int):
+    """Mark NFT token as failed, ignoring if not reserved in database."""
+    try:
+        db.mark_nft_failed(nft_token_id)
+        print(f"NFT token {nft_token_id} marked as failed")
+    except ValueError:
+        pass
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Generate Terraform configuration for Proxmox VMs with NFT auth",
@@ -342,6 +351,26 @@ Examples:
 
     args = parser.parse_args()
 
+    # Validate VM name (used in file paths — reject path traversal)
+    if not re.match(r'^[a-zA-Z0-9][a-zA-Z0-9._-]*$', args.name):
+        parser.error("VM name must start with a letter or digit and contain only letters, digits, dots, hyphens, and underscores")
+
+    # Validate resource bounds
+    if args.cpu < 1:
+        parser.error("--cpu must be at least 1")
+    if args.memory < 64:
+        parser.error("--memory must be at least 64")
+    if args.disk < 1:
+        parser.error("--disk must be at least 1")
+
+    # Validate wallet address format
+    if args.owner_wallet and not re.match(r'^0x[0-9a-fA-F]{40}$', args.owner_wallet):
+        parser.error("--owner-wallet must be a valid Ethereum address (0x followed by 40 hex characters)")
+
+    # Validate user signature format
+    if args.user_signature and not re.match(r'^0x[0-9a-fA-F]+$', args.user_signature):
+        parser.error("--user-signature must be a hex string starting with 0x")
+
     # Load terraform.tfvars for defaults
     tfvars = load_terraform_vars()
 
@@ -399,8 +428,6 @@ Examples:
     # Compute IPv6 gateway from prefix (first host address in the /120)
     ipv6_gateway = None
     if ipv6_address:
-        import ipaddress
-        from blockhost.config import load_broker_allocation
         broker = load_broker_allocation()
         if broker and broker.get("prefix"):
             network = ipaddress.IPv6Network(broker["prefix"], strict=False)
@@ -481,22 +508,15 @@ Examples:
         cloud_init_content = render_cloud_init(template_name, variables)
     elif template_name:
         # Non-web3 cloud-init template (e.g., webserver, devbox)
-        template_path = None
-        for template_dir in get_cloud_init_template_dirs():
-            candidate = template_dir / f"{template_name}.yaml"
-            if candidate.exists():
-                template_path = candidate
-                break
-        if template_path:
-            cloud_init_content = template_path.read_text()
-        else:
+        try:
+            cloud_init_content = render_cloud_init(template_name, {})
+        except FileNotFoundError:
             print(f"Warning: Cloud-init template '{template_name}' not found")
 
     # Generate Terraform config
     tf_dir = get_terraform_dir()
     tf_config = generate_tf_config(
         name=args.name,
-        vmid=vmid,
         ip_address=ip_address,
         gateway=gateway,
         tf_dir=tf_dir,
@@ -540,11 +560,7 @@ Examples:
         if run_terraform("init") != 0:
             print("Error: terraform init failed")
             if nft_token_id is not None:
-                try:
-                    db.mark_nft_failed(nft_token_id)
-                    print(f"NFT token {nft_token_id} marked as failed")
-                except ValueError:
-                    pass  # Token wasn't reserved in database, nothing to mark
+                mark_nft_failed_safe(db, nft_token_id)
             sys.exit(1)
 
         print("\nApplying Terraform configuration...")
@@ -555,11 +571,7 @@ Examples:
         if apply_result != 0:
             print(f"\nError: terraform apply failed")
             if nft_token_id is not None:
-                try:
-                    db.mark_nft_failed(nft_token_id)
-                    print(f"NFT token {nft_token_id} marked as failed (VM not created)")
-                except ValueError:
-                    pass  # Token wasn't reserved in database, nothing to mark
+                mark_nft_failed_safe(db, nft_token_id)
             sys.exit(1)
 
         print(f"\nVM '{args.name}' created successfully!")
@@ -637,7 +649,7 @@ Examples:
             print(f"\nSkipped NFT minting (--skip-mint). Token {nft_token_id} remains reserved.")
     else:
         print("\nTo apply this configuration:")
-        print(f"  cd {PROJECT_DIR}")
+        print(f"  cd {get_terraform_dir()}")
         print(f"  terraform init")
         print(f"  terraform apply")
         if web3_enabled:

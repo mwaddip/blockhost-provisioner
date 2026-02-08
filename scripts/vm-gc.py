@@ -59,7 +59,7 @@ def get_tf_file_path(name: str) -> Path:
     return get_terraform_dir() / f"{name}.tf.json"
 
 
-def run_qm_command(vmid: int, command: str, timeout: int = 60) -> tuple[bool, str]:
+def run_qm_command(vmid: int, command: str) -> tuple[bool, str]:
     """Run a qm command on a VM via root agent."""
     try:
         if command == "shutdown":
@@ -82,12 +82,12 @@ def shutdown_vm(vmid: int, graceful_timeout: int = 60) -> tuple[bool, str]:
     Returns (success, message).
     """
     # Try graceful shutdown first
-    success, output = run_qm_command(vmid, "shutdown", timeout=graceful_timeout)
+    success, output = run_qm_command(vmid, "shutdown")
     if success:
         return True, "Graceful shutdown successful"
 
     # Fall back to force stop
-    success, output = run_qm_command(vmid, "stop", timeout=30)
+    success, output = run_qm_command(vmid, "stop")
     if success:
         return True, "Force stop successful (graceful shutdown failed)"
 
@@ -382,6 +382,10 @@ Examples:
     # Load config for grace days
     db_config = load_db_config()
     grace_days = args.grace_days if args.grace_days is not None else db_config.get("gc_grace_days", 7)
+
+    if grace_days < 0:
+        print("Error: --grace-days must be non-negative")
+        return 1
 
     # Validate mutually exclusive options
     if args.suspend_only and args.destroy_only:
