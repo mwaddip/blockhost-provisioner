@@ -210,6 +210,11 @@ cp "${SCRIPT_DIR}/systemd/blockhost-gc.timer" "${PKG}/usr/lib/systemd/system/"
 # Install provisioner manifest
 cp "${SCRIPT_DIR}/provisioner.json" "${PKG}/usr/share/blockhost/provisioner.json"
 
+# Install provisioner hooks
+mkdir -p "${PKG}/usr/share/blockhost/provisioner-hooks"
+cp "${SCRIPT_DIR}/provisioner-hooks/first-boot.sh" "${PKG}/usr/share/blockhost/provisioner-hooks/first-boot.sh"
+chmod 755 "${PKG}/usr/share/blockhost/provisioner-hooks/first-boot.sh"
+
 # Install Python modules to /usr/lib/python3/dist-packages/blockhost/
 cp "${SCRIPT_DIR}/scripts/vm-generator.py" "${PKG}/usr/lib/python3/dist-packages/blockhost/vm_generator.py"
 cp "${SCRIPT_DIR}/scripts/mint_nft.py" "${PKG}/usr/lib/python3/dist-packages/blockhost/mint_nft.py"

@@ -305,6 +305,26 @@ provisioner_manifest:
     wizard_module: blockhost.provisioner_proxmox.wizard
     finalization_steps: [token, terraform, bridge, template]
 
+# First-boot hook (called by main first-boot.sh)
+first_boot_hook:
+  file: provisioner-hooks/first-boot.sh
+  install_path: /usr/share/blockhost/provisioner-hooks/first-boot.sh
+  description: |
+    Installs Proxmox VE, Terraform, and libguestfs-tools at first boot.
+    Called by the main first-boot.sh via the manifest's setup.first_boot_hook path.
+    Uses step markers in STATE_DIR for idempotent execution.
+  environment:
+    STATE_DIR: Step marker directory (default /var/lib/blockhost)
+    LOG_FILE: Log file path (default /var/log/blockhost-firstboot.log)
+  steps:
+    - hostname: Configure /etc/hosts for Proxmox (replace 127.0.1.1 with real IP)
+    - proxmox: Install proxmox-ve package from PVE repository
+    - terraform: Install Terraform from HashiCorp repository + libguestfs-tools
+  step_markers:
+    - .step-hostname
+    - .step-proxmox
+    - .step-terraform
+
 # Wizard plugin (loaded by main app's installer)
 wizard_plugin:
   module: blockhost.provisioner_proxmox.wizard

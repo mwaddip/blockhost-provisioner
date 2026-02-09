@@ -114,6 +114,7 @@ If yes to any, update `PROJECT.yaml` accordingly.
 | `scripts/build-template.sh` | Proxmox template builder |
 | `scripts/provisioner-detect.sh` | Detect Proxmox VE host |
 | `blockhost/provisioner_proxmox/wizard.py` | Wizard plugin (Blueprint, finalization, summary) |
+| `provisioner-hooks/first-boot.sh` | First-boot hook (installs Proxmox, Terraform) |
 
 ### From blockhost-common package
 
