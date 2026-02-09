@@ -643,10 +643,8 @@ def finalize_template(config: dict) -> tuple[bool, Optional[str]]:
                     sorted(debs, key=lambda p: p.stat().st_mtime, reverse=True)[0]
                 )
 
-        # Build template - check both installed location and development location
+        # Build template - use installed command from .deb package
         build_script = Path("/usr/bin/blockhost-build-template")
-        if not build_script.exists():
-            build_script = Path("/opt/blockhost-provisioner/scripts/build-template.sh")
         if build_script.exists():
             # Set up environment for build script
             env = os.environ.copy()
