@@ -75,6 +75,12 @@ if [ ! -f "$STEP_PROXMOX" ]; then
         wget -q https://enterprise.proxmox.com/debian/proxmox-release-bookworm.gpg -O /etc/apt/trusted.gpg.d/proxmox-release-bookworm.gpg
     fi
 
+    # Disable Proxmox enterprise repo (requires paid subscription)
+    if [ -f /etc/apt/sources.list.d/pve-enterprise.list ]; then
+        rm -f /etc/apt/sources.list.d/pve-enterprise.list
+        log "Removed pve-enterprise.list (no subscription)."
+    fi
+
     apt-get update
     DEBIAN_FRONTEND=noninteractive apt-get install -y proxmox-ve postfix open-iscsi chrony python3-ecdsa jq
     update-grub
@@ -91,6 +97,12 @@ fi
 STEP_TERRAFORM="${STATE_DIR}/.step-terraform"
 if [ ! -f "$STEP_TERRAFORM" ]; then
     log "Installing Terraform and libguestfs-tools..."
+
+    # Disable Proxmox enterprise repo if it reappeared (e.g. after proxmox-ve install)
+    if [ -f /etc/apt/sources.list.d/pve-enterprise.list ]; then
+        rm -f /etc/apt/sources.list.d/pve-enterprise.list
+        log "Removed pve-enterprise.list (no subscription)."
+    fi
 
     if [ ! -f /usr/share/keyrings/hashicorp-archive-keyring.gpg ]; then
         wget -O- https://apt.releases.hashicorp.com/gpg | gpg --dearmor -o /usr/share/keyrings/hashicorp-archive-keyring.gpg
