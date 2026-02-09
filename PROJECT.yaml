@@ -386,13 +386,13 @@ python_api:
         description: Load signing page HTML, embed decrypt credentials if provided, return as base64
 
 # Configuration and database modules are provided by blockhost-common
-# See: from blockhost.config import load_db_config, load_web3_config, get_terraform_dir
+# See: from blockhost.config import load_db_config, load_web3_config
 # See: from blockhost.vm_db import get_database, VMDatabase, MockVMDatabase
 external_modules:
   blockhost_common:
     package: blockhost-common
     provides:
-      - blockhost.config: Path constants, config loading (load_db_config, load_web3_config, get_terraform_dir, load_broker_allocation)
+      - blockhost.config: Path constants, config loading (load_db_config, load_web3_config, load_broker_allocation)
       - blockhost.vm_db: Database classes (VMDatabase, MockVMDatabase, get_database) with allocate_ip and allocate_ipv6
       - blockhost.root_agent: Root agent client (qm_start, qm_stop, qm_shutdown, qm_destroy, ip6_route_add, ip6_route_del, RootAgentError)
       - blockhost.cloud_init: Template rendering (render_cloud_init, find_template, list_templates)

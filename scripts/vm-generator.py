@@ -39,13 +39,12 @@ from pathlib import Path
 
 from blockhost.cloud_init import render_cloud_init
 from blockhost.config import (
-    get_terraform_dir,
     load_broker_allocation,
     load_db_config,
     load_web3_config,
 )
-from blockhost.mint_nft import mint_nft
 from blockhost.root_agent import RootAgentError, ip6_route_add
+from mint_nft import mint_nft
 from blockhost.vm_db import get_database
 
 
@@ -78,6 +77,12 @@ def get_next_token_id_from_contract(config: dict) -> int:
         raise RuntimeError("Foundry 'cast' not found. Install from https://getfoundry.sh")
     except subprocess.TimeoutExpired:
         raise RuntimeError("Contract call timed out")
+
+
+def get_terraform_dir() -> Path:
+    """Get the Terraform working directory from db config."""
+    config = load_db_config()
+    return Path(config["terraform_dir"])
 
 
 def load_terraform_vars() -> dict:

@@ -38,7 +38,7 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-from blockhost.config import get_terraform_dir, load_db_config
+from blockhost.config import load_db_config
 from blockhost.root_agent import (
     RootAgentError,
     ip6_route_del,
@@ -47,6 +47,11 @@ from blockhost.root_agent import (
     qm_stop,
 )
 from blockhost.vm_db import get_database
+
+
+def get_terraform_dir() -> Path:
+    """Get the Terraform working directory from db config."""
+    return Path(load_db_config()["terraform_dir"])
 
 
 def sanitize_resource_name(name: str) -> str:
