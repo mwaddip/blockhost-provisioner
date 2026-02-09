@@ -13,6 +13,21 @@
 
 See `SPECIAL.md` for full stat definitions and the priority allocation model.
 
+## Interface Contracts (REFERENCE)
+
+**Contract specs define how this package interfaces with the rest of the system.** Read and internalize the relevant contract before modifying CLI signatures, wizard exports, root agent actions, or the manifest. Do not rely on assumptions — read the contract.
+
+| Contract | Covers | Read when... |
+|----------|--------|-------------|
+| `PROVISIONER_INTERFACE.md` | The provisioner contract — manifest schema, CLI commands, wizard plugin, root agent actions, first-boot hook | Changing any interface the engine, wizard, root agent, or first-boot consumes |
+| `COMMON_INTERFACE.md` | blockhost-common's public API — config, vm_db, root_agent, cloud_init | Using any import from `blockhost.*` |
+
+**This is the reference implementation.** The libvirt provisioner is being built against the same contract. If the contract needs to change, coordinate with the main session — both provisioners must stay in sync.
+
+## Interface Integrity (PERSISTENT RULE)
+
+**When interfaces don't match, fix the interface — never wrap the mismatch.** If something in the contract doesn't match reality, update the contract (and notify the main session), don't write a wrapper.
+
 ## Project Scope
 
 **This Claude session only modifies blockhost-provisioner-proxmox.** Changes to dependency packages (blockhost-common, blockhost-broker, libpam-web3-tools) should be done in their respective Claude sessions with separate prompts.
