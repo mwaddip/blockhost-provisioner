@@ -44,7 +44,6 @@ from blockhost.config import (
     load_web3_config,
 )
 from blockhost.root_agent import RootAgentError, ip6_route_add
-from mint_nft import mint_nft
 from blockhost.vm_db import get_database
 
 
@@ -609,6 +608,7 @@ Examples:
                     user_encrypted = hex_match.group(1)
                     print(f"Encrypted: {user_encrypted[:20]}...{user_encrypted[-8:]}")
 
+                from mint_nft import mint_nft
                 tx_hash = mint_nft(
                     owner_wallet=args.owner_wallet,
                     machine_id=args.name,
