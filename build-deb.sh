@@ -49,7 +49,6 @@ Description: Proxmox VM provisioning with NFT-based web3 authentication
   - blockhost-vm-list: List all VMs
   - blockhost-vm-gc: Garbage collect expired VMs (two-phase: suspend then destroy)
   - blockhost-vm-resume: Resume a suspended VM
-  - blockhost-mint-nft: Mint access credential NFTs
   - blockhost-build-template: Build Proxmox VM template
   - blockhost-provisioner-detect: Detect Proxmox VE host
   - Provisioner manifest for engine integration
@@ -94,7 +93,6 @@ case "$1" in
         echo "  blockhost-vm-list        - List all VMs"
         echo "  blockhost-vm-gc          - Garbage collect expired VMs"
         echo "  blockhost-vm-resume      - Resume a suspended VM"
-        echo "  blockhost-mint-nft       - Mint access credential NFTs"
         echo "  blockhost-build-template - Build Proxmox VM template"
         echo ""
         echo "IMPORTANT: Manual installation required for:"
@@ -184,7 +182,6 @@ cp "${SCRIPT_DIR}/scripts/vm-metrics.sh" "${PKG}/usr/bin/blockhost-vm-metrics"
 cp "${SCRIPT_DIR}/scripts/vm-throttle.sh" "${PKG}/usr/bin/blockhost-vm-throttle"
 cp "${SCRIPT_DIR}/scripts/vm-gc.py" "${PKG}/usr/bin/blockhost-vm-gc"
 cp "${SCRIPT_DIR}/scripts/vm-resume.py" "${PKG}/usr/bin/blockhost-vm-resume"
-cp "${SCRIPT_DIR}/scripts/mint_nft.py" "${PKG}/usr/bin/blockhost-mint-nft"
 cp "${SCRIPT_DIR}/scripts/build-template.sh" "${PKG}/usr/bin/blockhost-build-template"
 cp "${SCRIPT_DIR}/scripts/provisioner-detect.sh" "${PKG}/usr/bin/blockhost-provisioner-detect"
 
@@ -199,7 +196,6 @@ chmod 755 "${PKG}/usr/bin/blockhost-vm-metrics"
 chmod 755 "${PKG}/usr/bin/blockhost-vm-throttle"
 chmod 755 "${PKG}/usr/bin/blockhost-vm-gc"
 chmod 755 "${PKG}/usr/bin/blockhost-vm-resume"
-chmod 755 "${PKG}/usr/bin/blockhost-mint-nft"
 chmod 755 "${PKG}/usr/bin/blockhost-build-template"
 chmod 755 "${PKG}/usr/bin/blockhost-provisioner-detect"
 
@@ -221,7 +217,6 @@ cp "${SCRIPT_DIR}/root-agent-actions/qm.py" "${PKG}/usr/share/blockhost/root-age
 
 # Install Python modules to /usr/lib/python3/dist-packages/blockhost/
 cp "${SCRIPT_DIR}/scripts/vm-generator.py" "${PKG}/usr/lib/python3/dist-packages/blockhost/vm_generator.py"
-cp "${SCRIPT_DIR}/scripts/mint_nft.py" "${PKG}/usr/lib/python3/dist-packages/blockhost/mint_nft.py"
 
 # Install provisioner wizard plugin
 WIZARD_PKG_DIR="${PKG}/usr/lib/python3/dist-packages/blockhost/provisioner_proxmox"

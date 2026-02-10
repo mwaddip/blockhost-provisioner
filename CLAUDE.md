@@ -71,10 +71,6 @@ python3 scripts/vm-generator.py <name> --owner-wallet <0x...> \
     --user-signature <0x...> --public-secret "libpam-web3:<address>:<nonce>" \
     [--apply]
 
-# Mint NFT manually (with encrypted connection details)
-python3 scripts/mint_nft.py --owner-wallet <0x...> --machine-id <name> \
-    --user-encrypted <0x...> --public-secret "libpam-web3:<address>:<nonce>"
-
 # VM lifecycle commands
 blockhost-vm-start <name>
 blockhost-vm-stop <name>
@@ -125,7 +121,6 @@ If yes to any, update `PROJECT.yaml` accordingly.
 | `scripts/vm-list.sh` | List all VMs |
 | `scripts/vm-gc.py` | Garbage collection for expired VMs |
 | `scripts/vm-resume.py` | Resume a suspended VM |
-| `scripts/mint_nft.py` | NFT minting via Foundry cast |
 | `scripts/build-template.sh` | Proxmox template builder |
 | `scripts/provisioner-detect.sh` | Detect Proxmox VE host |
 | `blockhost/provisioner_proxmox/wizard.py` | Wizard plugin (Blueprint, finalization, summary) |
