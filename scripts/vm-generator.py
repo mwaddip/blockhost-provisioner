@@ -398,6 +398,7 @@ Examples:
 
     # Compute IPv6 gateway from prefix (first host address in the /120)
     ipv6_gateway = None
+    broker = None
     if ipv6_address:
         broker = load_broker_allocation()
         if broker and broker.get("prefix"):
@@ -460,9 +461,15 @@ Examples:
         # Generate random secret key for PAM module (32 bytes = 64 hex chars)
         secret_key = secrets.token_hex(32)
 
-        # Determine signing host: IPv6 (public) preferred, fall back to IPv4 (private)
-        # IPv6 addresses must be wrapped in brackets for URLs
-        if ipv6_address:
+        # Derive FQDN from broker DNS zone if available
+        # Broker DNS maps {hex_offset}.{dns_zone} → {prefix}::{hex_offset}
+        signing_domain = ""
+        if broker and broker.get("dns_zone") and ipv6_address:
+            prefix_net = ipaddress.IPv6Network(broker["prefix"], strict=False)
+            offset = int(ipaddress.IPv6Address(ipv6_address)) - int(prefix_net.network_address)
+            signing_domain = f"{offset:x}.{broker['dns_zone']}"
+            signing_host = signing_domain
+        elif ipv6_address:
             signing_host = f"[{ipv6_address}]"
         else:
             signing_host = ip_address
@@ -473,6 +480,7 @@ Examples:
             "VM_IP": ip_address,
             "VM_IPV6": ipv6_address or "",
             "SIGNING_HOST": signing_host,
+            "SIGNING_DOMAIN": signing_domain,
             "USERNAME": args.username,
             "NFT_TOKEN_ID": str(nft_token_id),
             "CHAIN_ID": str(web3_config["blockchain"]["chain_id"]),

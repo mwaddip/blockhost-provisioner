@@ -469,7 +469,12 @@ workflow:
       - 3: Allocate VMID, IPv4 and IPv6 (db.allocate_vmid, db.allocate_ip, db.allocate_ipv6)
       - 4: Compute IPv6 gateway from broker prefix (first host address, offset +1)
       - 5: Load Proxmox settings from terraform.tfvars (node, datastores)
-      - 6: Use --cloud-init-content if provided, otherwise render cloud-init template with variables
+      - 6: |
+          Use --cloud-init-content if provided, otherwise render cloud-init template with variables:
+          VM_NAME, VM_IP, VM_IPV6, SIGNING_HOST, SIGNING_DOMAIN, USERNAME,
+          NFT_TOKEN_ID, CHAIN_ID, NFT_CONTRACT, RPC_URL, OTP_LENGTH, OTP_TTL, SECRET_KEY, SSH_KEYS.
+          SIGNING_DOMAIN is the broker DNS FQDN ({hex_offset}.{dns_zone}) when dns_zone is present,
+          empty string otherwise. SIGNING_HOST is SIGNING_DOMAIN when available, else [IPv6] or IPv4.
       - 7: Generate .tf.json config (with dual-stack IPv4/IPv6, datastore_id, ipv6_gateway)
       - 8: Run terraform apply (if --apply)
       - 9: Add IPv6 host route via root agent (ip6_route_add <ipv6>/128 vmbr0)
@@ -489,6 +494,9 @@ workflow:
         IPv6 addresses are allocated from the broker pool (/etc/blockhost/broker-allocation.json).
         If the broker allocation file exists, VMs get both private IPv4 and public IPv6.
         The NFT encrypted connection details use IPv6 (public) when available.
+        When broker-allocation.json includes a dns_zone field, the broker runs authoritative
+        DNS mapping {hex_offset}.{dns_zone} → {prefix}::{hex_offset}. The VM's FQDN is
+        derived as SIGNING_DOMAIN and used as SIGNING_HOST for the cloud-init template.
       gateway: |
         IPv6 gateway is computed as the first host address in the /120 prefix (offset +1).
         This is where the Proxmox host has its address on vmbr0.
