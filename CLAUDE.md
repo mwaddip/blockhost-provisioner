@@ -79,7 +79,7 @@ blockhost-vm-status <name>
 blockhost-vm-list [--json]
 
 # Update VM GECOS after ownership transfer
-blockhost-vm-update-gecos <name> <wallet-address>
+blockhost-vm-update-gecos <name> <wallet-address> --nft-id <id>
 
 # Garbage collect expired VMs
 python3 scripts/vm-gc.py [--execute] [--grace-days N]

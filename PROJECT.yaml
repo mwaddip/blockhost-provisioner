@@ -269,8 +269,15 @@ entry_points:
       - name: wallet_address
         position: 2
         description: New owner's wallet address
+      - name: --nft-id
+        type: int
+        description: NFT token ID (passed by engine)
+    optional_args:
+      - name: --username
+        default: admin
+        description: Linux username to update (default admin)
     example: |
-      blockhost-vm-update-gecos myvm bc1q...
+      blockhost-vm-update-gecos myvm bc1q... --nft-id 42
 
 # Provisioner manifest (engine integration)
 provisioner_manifest:

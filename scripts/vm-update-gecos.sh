@@ -4,41 +4,38 @@ set -e
 
 VM_NAME="$1"
 WALLET_ADDRESS="$2"
-[ -z "$VM_NAME" ] || [ -z "$WALLET_ADDRESS" ] && {
-    echo "Usage: blockhost-vm-update-gecos <vm-name> <wallet-address>" >&2
-    exit 1
-}
+shift 2 2>/dev/null || { echo "Usage: blockhost-vm-update-gecos <vm-name> <wallet-address> --nft-id <id> [--username <user>]" >&2; exit 1; }
 
-exec python3 - "$VM_NAME" "$WALLET_ADDRESS" << 'PYEOF'
+exec python3 - "$VM_NAME" "$WALLET_ADDRESS" "$@" << 'PYEOF'
+import argparse
 import sys
 
 from blockhost.root_agent import call, RootAgentError
 from blockhost.vm_db import get_database
 
-vm_name = sys.argv[1]
-wallet_address = sys.argv[2]
+parser = argparse.ArgumentParser()
+parser.add_argument("vm_name")
+parser.add_argument("wallet_address")
+parser.add_argument("--nft-id", required=True, type=int, help="NFT token ID")
+parser.add_argument("--username", default="admin", help="Linux username (default: admin)")
+args = parser.parse_args()
 
 db = get_database()
-vm = db.get_vm(vm_name)
+vm = db.get_vm(args.vm_name)
 if not vm:
-    print(f"Error: VM '{vm_name}' not found", file=sys.stderr)
+    print(f"Error: VM '{args.vm_name}' not found", file=sys.stderr)
     sys.exit(1)
 
 if vm.get("status") != "active":
-    print(f"Error: VM '{vm_name}' is not active (status: {vm.get('status')})", file=sys.stderr)
+    print(f"Error: VM '{args.vm_name}' is not active (status: {vm.get('status')})", file=sys.stderr)
     sys.exit(1)
 
-nft_token_id = vm.get("nft_token_id")
-if nft_token_id is None:
-    print(f"Error: VM '{vm_name}' has no NFT token ID", file=sys.stderr)
-    sys.exit(1)
-
-gecos = f"wallet={wallet_address},nft={nft_token_id}"
+gecos = f"wallet={args.wallet_address},nft={args.nft_id}"
 
 try:
-    result = call("qm-update-gecos", vmid=vm["vmid"], username="admin", gecos=gecos)
-    print(f"Updated GECOS for {vm_name}: {gecos}")
+    call("qm-update-gecos", vmid=vm["vmid"], username=args.username, gecos=gecos)
+    print(f"Updated GECOS for {args.vm_name}: {gecos}")
 except RootAgentError as e:
-    print(f"Error: Failed to update GECOS for {vm_name}: {e}", file=sys.stderr)
+    print(f"Error: Failed to update GECOS for {args.vm_name}: {e}", file=sys.stderr)
     sys.exit(1)
 PYEOF
